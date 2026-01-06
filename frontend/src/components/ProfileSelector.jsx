@@ -36,9 +36,14 @@ export default function ProfileSelector() {
     e.stopPropagation();
     if (!newUserName.trim()) return;
 
-    await addUser(newUserName.trim(), newUserTimezone);
-    setNewUserName("");
-    setIsOpen(false);
+    try {
+      await addUser(newUserName.trim(), newUserTimezone);
+      setNewUserName("");
+      setIsOpen(false);
+    } catch (error) {
+      console.error("Failed to add user:", error);
+      alert("Failed to add user. Please try again.");
+    }
   }
 
   return (
@@ -89,7 +94,7 @@ export default function ProfileSelector() {
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="beta"
+                placeholder="username"
                 value={newUserName}
                 onChange={(e) => setNewUserName(e.target.value)}
                 className="flex-1 border rounded px-2 py-1 text-sm"

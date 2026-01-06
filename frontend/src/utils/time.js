@@ -53,4 +53,9 @@ export function validateEventDates(startDate, endDate, timezone) {
       error: "End date/time must be after start date/time",
     };
   }
+
+  return {
+    valid: true,
+    error: null,
+  };
 }

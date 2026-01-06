@@ -21,6 +21,9 @@ export const getEvents = (userId) =>
     params: { userId },
   });
 
+export const updateEvent = (eventId, data) =>
+  api.put(`/api/events/${eventId}`, data);
+
 /* ---------- LOGS ---------- */
 export const getEventLogs = (eventId) => api.get(`/api/events/${eventId}/logs`);
 
