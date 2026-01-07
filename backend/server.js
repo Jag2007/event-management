@@ -11,10 +11,9 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 4000;
 
-// Connect to MongoDB
 connectDB();
 
-// Middleware
+// Middlewares
 app.use(
   cors({
     origin: [
@@ -32,12 +31,12 @@ app.use(express.urlencoded({ extended: true }));
 app.use("/api/users", userRoutes);
 app.use("/api/events", eventRoutes);
 
-// Health check route
+// demo check routes
 app.get("/", (req, res) => {
   res.json({ message: "Event Management API is running" });
 });
 
-// Error handling middleware
+// middleware for error handling
 app.use(errorHandler);
 
 // Start server

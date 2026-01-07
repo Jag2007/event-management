@@ -5,7 +5,7 @@ import User from "../models/User.js";
 
 const router = express.Router();
 
-// Get events for a specific user
+// Fetching events for a specific user
 router.get("/", async (req, res) => {
   try {
     const { userId } = req.query;
@@ -28,7 +28,7 @@ router.get("/", async (req, res) => {
   }
 });
 
-// Create a new event
+// Creating a new event
 router.post("/", async (req, res) => {
   try {
     const { profiles, profileIds, timezone, start, end } = req.body;
@@ -78,7 +78,7 @@ router.post("/", async (req, res) => {
   }
 });
 
-// Update an event
+// Updating an event
 router.put("/:eventId", async (req, res) => {
   try {
     const { eventId } = req.params;
@@ -171,7 +171,7 @@ router.put("/:eventId", async (req, res) => {
   }
 });
 
-// Get update logs for an event
+// fetching updated logs for a user
 router.get("/:eventId/logs", async (req, res) => {
   try {
     const { eventId } = req.params;

@@ -8,7 +8,7 @@ import {
 } from "../api/api";
 
 const useStore = create((set, get) => ({
-  /* ---------- USERS ---------- */
+  // users
   users: [],
   selectedUser: null,
 
@@ -41,7 +41,7 @@ const useStore = create((set, get) => ({
     }
   },
 
-  /* ---------- EVENTS ---------- */
+  //events
   events: [],
 
   fetchEvents: async () => {
@@ -61,7 +61,7 @@ const useStore = create((set, get) => ({
   addEvent: async (eventData) => {
     try {
       await createEvent(eventData);
-      await get().fetchEvents(); // refresh list
+      await get().fetchEvents(); // refreshing list
     } catch (error) {
       console.error("Failed to add event:", error);
       throw error;
@@ -71,7 +71,7 @@ const useStore = create((set, get) => ({
   updateEvent: async (eventId, eventData) => {
     try {
       await updateEventAPI(eventId, eventData);
-      await get().fetchEvents(); // refresh list
+      await get().fetchEvents();
     } catch (error) {
       console.error("Failed to update event:", error);
       throw error;
