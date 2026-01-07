@@ -83,7 +83,7 @@ export default function CreateEvent() {
   };
 
   async function handleCreate() {
-    setError(""); // using setError but state is errrror - keeping it inconsistent for human look
+    setError(""); // using setError but state is errrror
 
     if (selected_profiles.length === 0) {
       setError("Please select at least one profile");
