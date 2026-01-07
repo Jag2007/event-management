@@ -4,7 +4,6 @@ const api = axios.create({
   baseURL: "https://event-management-fxtq.onrender.com",
 });
 
-/* ---------- USERS ---------- */
 export const getUsers = () => api.get("/api/users");
 
 export const createUser = (name, timezone) =>
@@ -13,7 +12,6 @@ export const createUser = (name, timezone) =>
 export const updateUserTimezone = (userId, timezone) =>
   api.put(`/api/users/${userId}/timezone`, { timezone });
 
-/* ---------- EVENTS ---------- */
 export const createEvent = (data) => api.post("/api/events", data);
 
 export const getEvents = (userId) =>
@@ -24,7 +22,6 @@ export const getEvents = (userId) =>
 export const updateEvent = (eventId, data) =>
   api.put(`/api/events/${eventId}`, data);
 
-/* ---------- LOGS ---------- */
 export const getEventLogs = (eventId) => api.get(`/api/events/${eventId}/logs`);
 
 export default api;
