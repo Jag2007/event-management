@@ -166,7 +166,11 @@ export default function EventList() {
       {editingEvent && (
         <EventUpdate
           event={editingEvent}
-          onClose={() => setEditingEvent(null)}
+          onClose={() => {
+            setEditingEvent(null);
+            // Refresh events after update
+            fetchEvents();
+          }}
         />
       )}
 

@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import Event from "../models/Event.js";
 import EventLog from "../models/EventLog.js";
 import User from "../models/User.js";
@@ -73,38 +74,134 @@ router.put("/:eventId", async (req, res) => {
 
     const logChanges = [];
 
-    // Tracking changes manually for the log
-    if (
-      body.profiles &&
-      JSON.stringify([...body.profiles].sort()) !==
-        JSON.stringify([...doc.profiles].sort())
-    ) {
-      logChanges.push({
-        field: "profiles",
-        old: doc.profiles,
-        new: body.profiles,
-      });
+    // Helper function to normalize dates for comparison (compare only up to seconds, ignore milliseconds)
+    const normalizeDate = (date) => {
+      if (!date) return null;
+      const d = date instanceof Date ? date : new Date(date);
+      if (isNaN(d.getTime())) return null;
+      // Round to seconds to avoid millisecond precision issues
+      return new Date(Math.floor(d.getTime() / 1000) * 1000);
+    };
+
+    // Helper function to format value for display
+    const formatValue = (value, field) => {
+      if (value === null || value === undefined) return null;
+
+      if (field === "start" || field === "end") {
+        try {
+          const date = value instanceof Date ? value : new Date(value);
+          if (isNaN(date.getTime())) return null;
+          return date.toISOString();
+        } catch (e) {
+          return null;
+        }
+      }
+
+      if (field === "profiles") {
+        if (Array.isArray(value) && value.length > 0) {
+          return value.join(", ");
+        }
+        return value ? String(value) : null;
+      }
+
+      // For timezone and other string fields
+      return value ? String(value) : null;
+    };
+
+    // Track profiles changes
+    if (body.profiles !== undefined) {
+      const oldProfiles = Array.isArray(doc.profiles)
+        ? [...doc.profiles].sort()
+        : [];
+      const newProfiles = Array.isArray(body.profiles)
+        ? [...body.profiles].sort()
+        : [];
+
+      if (JSON.stringify(oldProfiles) !== JSON.stringify(newProfiles)) {
+        const oldProfilesValue =
+          Array.isArray(doc.profiles) && doc.profiles.length > 0
+            ? doc.profiles.join(", ")
+            : doc.profiles || null;
+        const newProfilesValue =
+          Array.isArray(body.profiles) && body.profiles.length > 0
+            ? body.profiles.join(", ")
+            : body.profiles || null;
+
+        logChanges.push({
+          field: "profiles",
+          oldValue: oldProfilesValue,
+          newValue: newProfilesValue,
+        });
+      }
     }
 
-    if (body.timezone && body.timezone !== doc.timezone) {
-      logChanges.push({
-        field: "timezone",
-        old: doc.timezone,
-        new: body.timezone,
-      });
+    // Track timezone changes
+    if (body.timezone !== undefined) {
+      const oldTimezone = doc.timezone || null;
+      const newTimezone = body.timezone || null;
+
+      if (oldTimezone !== newTimezone) {
+        logChanges.push({
+          field: "timezone",
+          oldValue: oldTimezone,
+          newValue: newTimezone,
+        });
+      }
     }
 
-    // Time comparison logic
-    const hasStartChanged =
-      body.start && new Date(body.start).getTime() !== doc.start.getTime();
-    const hasEndChanged =
-      body.end && new Date(body.end).getTime() !== doc.end.getTime();
+    // Track start date changes
+    if (body.start !== undefined) {
+      const oldStart = normalizeDate(doc.start);
+      const newStart = normalizeDate(body.start);
 
-    if (hasStartChanged)
-      logChanges.push({ field: "start", old: doc.start, new: body.start });
-    if (hasEndChanged)
-      logChanges.push({ field: "end", old: doc.end, new: body.end });
+      if (oldStart && newStart && oldStart.getTime() !== newStart.getTime()) {
+        logChanges.push({
+          field: "start",
+          oldValue: formatValue(doc.start, "start"),
+          newValue: formatValue(body.start, "start"),
+        });
+      } else if (!oldStart && newStart) {
+        logChanges.push({
+          field: "start",
+          oldValue: null,
+          newValue: formatValue(body.start, "start"),
+        });
+      } else if (oldStart && !newStart) {
+        logChanges.push({
+          field: "start",
+          oldValue: formatValue(doc.start, "start"),
+          newValue: null,
+        });
+      }
+    }
 
+    // Track end date changes
+    if (body.end !== undefined) {
+      const oldEnd = normalizeDate(doc.end);
+      const newEnd = normalizeDate(body.end);
+
+      if (oldEnd && newEnd && oldEnd.getTime() !== newEnd.getTime()) {
+        logChanges.push({
+          field: "end",
+          oldValue: formatValue(doc.end, "end"),
+          newValue: formatValue(body.end, "end"),
+        });
+      } else if (!oldEnd && newEnd) {
+        logChanges.push({
+          field: "end",
+          oldValue: null,
+          newValue: formatValue(body.end, "end"),
+        });
+      } else if (oldEnd && !newEnd) {
+        logChanges.push({
+          field: "end",
+          oldValue: formatValue(doc.end, "end"),
+          newValue: null,
+        });
+      }
+    }
+
+    // If no changes detected, return current document
     if (logChanges.length === 0) {
       return res.json(
         await Event.findById(eventId).populate("profileIds", "name timezone")
@@ -112,13 +209,26 @@ router.put("/:eventId", async (req, res) => {
     }
 
     // Prepare update object
-    const updatePayload = {
-      ...body,
-      start: body.start ? new Date(body.start) : doc.start,
-      end: body.end ? new Date(body.end) : doc.end,
-    };
+    const updatePayload = {};
 
-    if (updatePayload.end <= updatePayload.start) {
+    if (body.profiles !== undefined) {
+      updatePayload.profiles = body.profiles;
+    }
+    if (body.timezone !== undefined) {
+      updatePayload.timezone = body.timezone;
+    }
+    if (body.start !== undefined) {
+      updatePayload.start = new Date(body.start);
+    }
+    if (body.end !== undefined) {
+      updatePayload.end = new Date(body.end);
+    }
+
+    // Validate date range if both dates are present
+    const finalStart = updatePayload.start || doc.start;
+    const finalEnd = updatePayload.end || doc.end;
+
+    if (finalEnd <= finalStart) {
       return res.status(400).json({ error: "Invalid date range" });
     }
 
@@ -127,12 +237,14 @@ router.put("/:eventId", async (req, res) => {
       runValidators: true,
     }).populate("profileIds", "name timezone");
 
-    // Save history
-    await EventLog.create({
-      eventId: updated._id,
-      timestamp: new Date(),
-      changes: logChanges,
-    });
+    // Save history only if there are changes
+    if (logChanges.length > 0) {
+      await EventLog.create({
+        eventId: updated._id,
+        timestamp: new Date(),
+        changes: logChanges,
+      });
+    }
 
     res.json(updated);
   } catch (err) {
@@ -142,10 +254,19 @@ router.put("/:eventId", async (req, res) => {
 
 router.get("/:eventId/logs", async (req, res) => {
   try {
-    const exists = await Event.exists({ _id: req.params.eventId });
+    const eventId = req.params.eventId;
+
+    // Validate ObjectId format
+    if (!mongoose.Types.ObjectId.isValid(eventId)) {
+      return res.status(400).json({ error: "Invalid event ID format" });
+    }
+
+    const exists = await Event.exists({ _id: eventId });
     if (!exists) return res.status(404).json({ error: "No such event" });
 
-    const history = await EventLog.find({ eventId: req.params.eventId })
+    const history = await EventLog.find({
+      eventId: new mongoose.Types.ObjectId(eventId),
+    })
       .sort({ timestamp: -1 })
       .lean();
 

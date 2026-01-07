@@ -1,25 +1,33 @@
 import { useEffect, useState } from "react";
 import { getEventLogs } from "../api/api";
 import { formatTime } from "../utils/time";
-import { CloseOutlined } from "@ant-design/icons";
+import { CloseOutlined, ReloadOutlined } from "@ant-design/icons";
 import { Button } from "antd";
+import dayjs from "dayjs";
+import utc from "dayjs/plugin/utc";
+import timezone from "dayjs/plugin/timezone";
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
 
 export default function UpdateLogs({ eventId, onClose }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    async function fetchLogs() {
-      try {
-        const res = await getEventLogs(eventId);
-        setLogs(res.data);
-      } catch (err) {
-        console.error("Failed to fetch logs", err);
-      } finally {
-        setLoading(false);
-      }
+  const fetchLogs = async () => {
+    try {
+      setLoading(true);
+      const res = await getEventLogs(eventId);
+      setLogs(res.data || []);
+    } catch (err) {
+      console.error("Failed to fetch logs", err);
+      setLogs([]);
+    } finally {
+      setLoading(false);
     }
+  };
 
+  useEffect(() => {
     fetchLogs();
   }, [eventId]);
 
@@ -31,12 +39,21 @@ export default function UpdateLogs({ eventId, onClose }) {
           <h3 className="text-lg font-semibold text-gray-800">
             Event Update History
           </h3>
-          <button
-            onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 transition-colors"
-          >
-            <CloseOutlined />
-          </button>
+          <div className="flex gap-2 items-center">
+            <button
+              onClick={fetchLogs}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+              title="Refresh logs"
+            >
+              <ReloadOutlined />
+            </button>
+            <button
+              onClick={onClose}
+              className="text-gray-400 hover:text-gray-600 transition-colors"
+            >
+              <CloseOutlined />
+            </button>
+          </div>
         </div>
 
         {/* Content */}
@@ -57,23 +74,57 @@ export default function UpdateLogs({ eventId, onClose }) {
                   {formatTime(log.timestamp, "UTC")}
                 </p>
 
-                <ul className="space-y-2">
-                  {log.changes.map((c, idx) => (
-                    <li key={idx} className="text-sm">
-                      <span className="font-medium text-gray-700">
-                        {c.field}
-                      </span>
-                      :{" "}
-                      <span className="line-through text-red-500">
-                        {String(c.oldValue)}
-                      </span>{" "}
-                      →{" "}
-                      <span className="text-green-600">
-                        {String(c.newValue)}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
+                {log.changes && log.changes.length > 0 ? (
+                  <ul className="space-y-2">
+                    {log.changes.map((c, idx) => {
+                      const formatValue = (value, field) => {
+                        if (
+                          value === null ||
+                          value === undefined ||
+                          value === ""
+                        ) {
+                          return "N/A";
+                        }
+                        // Format dates for start/end fields
+                        if (field === "start" || field === "end") {
+                          try {
+                            // Handle both string and Date objects
+                            const date =
+                              typeof value === "string"
+                                ? dayjs(value)
+                                : dayjs(new Date(value));
+                            if (date.isValid()) {
+                              return date.format("MMM DD, YYYY [at] hh:mm A");
+                            }
+                          } catch (e) {
+                            // Fall through to string conversion
+                          }
+                        }
+                        return String(value);
+                      };
+
+                      return (
+                        <li key={idx} className="text-sm">
+                          <span className="font-medium text-gray-700 capitalize">
+                            {c.field}
+                          </span>
+                          :{" "}
+                          <span className="line-through text-red-500">
+                            {formatValue(c.oldValue, c.field)}
+                          </span>{" "}
+                          →{" "}
+                          <span className="text-green-600">
+                            {formatValue(c.newValue, c.field)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                ) : (
+                  <p className="text-gray-400 text-sm">
+                    No changes recorded in this log entry.
+                  </p>
+                )}
               </div>
             ))
           )}
