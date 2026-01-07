@@ -2,6 +2,7 @@ import axios from "axios";
 
 const api = axios.create({
   baseURL: "https://event-management-fxtq.onrender.com",
+  // baseURL: "http://localhost:4000",
 });
 
 export const getUsers = () => api.get("/api/users");

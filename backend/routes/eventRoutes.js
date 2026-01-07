@@ -5,189 +5,153 @@ import User from "../models/User.js";
 
 const router = express.Router();
 
-// Fetching events for a specific user
+// Grab events - filter by user if ID is provided
 router.get("/", async (req, res) => {
   try {
     const { userId } = req.query;
+    let filter = {};
 
-    let query = {};
     if (userId) {
       const user = await User.findById(userId);
-      if (user) {
-        query = { profiles: user.name };
-      }
+      // Only filter if we actually find a user
+      if (user) filter = { profiles: user.name };
     }
 
-    const events = await Event.find(query)
+    const list = await Event.find(filter)
       .populate("profileIds", "name timezone")
       .sort({ createdAt: -1 });
 
-    res.json(events);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Creating a new event
 router.post("/", async (req, res) => {
   try {
     const { profiles, profileIds, timezone, start, end } = req.body;
 
-    if (!profiles || !Array.isArray(profiles) || profiles.length === 0) {
-      return res
-        .status(400)
-        .json({ error: "At least one profile is required" });
+    // Basic validation
+    if (!profiles?.length)
+      return res.status(400).json({ error: "Need at least one profile" });
+    if (!timezone) return res.status(400).json({ error: "Timezone missing" });
+    if (!start || !end)
+      return res.status(400).json({ error: "Timestamps required" });
+
+    const sDate = new Date(start);
+    const eDate = new Date(end);
+
+    if (eDate <= sDate) {
+      return res.status(400).json({ error: "End time must be after start" });
     }
 
-    if (!timezone) {
-      return res.status(400).json({ error: "Timezone is required" });
-    }
-
-    if (!start || !end) {
-      return res
-        .status(400)
-        .json({ error: "Start and end dates are required" });
-    }
-
-    const startDate = new Date(start);
-    const endDate = new Date(end);
-
-    if (endDate <= startDate) {
-      return res.status(400).json({
-        error: "End date/time must be after start date/time",
-      });
-    }
-
-    const event = new Event({
+    const newEvent = await Event.create({
       profiles,
       profileIds: profileIds || [],
       timezone,
-      start: startDate,
-      end: endDate,
+      start: sDate,
+      end: eDate,
     });
 
-    const savedEvent = await event.save();
-    const populatedEvent = await Event.findById(savedEvent._id).populate(
+    const result = await Event.findById(newEvent._id).populate(
       "profileIds",
       "name timezone"
     );
-
-    res.status(201).json(populatedEvent);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Updating an event
 router.put("/:eventId", async (req, res) => {
   try {
     const { eventId } = req.params;
-    const { profiles, profileIds, timezone, start, end } = req.body;
+    const body = req.body;
 
-    const oldEvent = await Event.findById(eventId);
-    if (!oldEvent) {
-      return res.status(404).json({ error: "Event not found" });
-    }
+    const doc = await Event.findById(eventId);
+    if (!doc) return res.status(404).json({ error: "Event not found" });
 
-    const changes = [];
+    const logChanges = [];
 
+    // Tracking changes manually for the log
     if (
-      profiles &&
-      JSON.stringify(profiles.sort()) !==
-        JSON.stringify(oldEvent.profiles.sort())
+      body.profiles &&
+      JSON.stringify([...body.profiles].sort()) !==
+        JSON.stringify([...doc.profiles].sort())
     ) {
-      changes.push({
+      logChanges.push({
         field: "profiles",
-        oldValue: oldEvent.profiles,
-        newValue: profiles,
+        old: doc.profiles,
+        new: body.profiles,
       });
     }
 
-    if (timezone && timezone !== oldEvent.timezone) {
-      changes.push({
+    if (body.timezone && body.timezone !== doc.timezone) {
+      logChanges.push({
         field: "timezone",
-        oldValue: oldEvent.timezone,
-        newValue: timezone,
+        old: doc.timezone,
+        new: body.timezone,
       });
     }
 
-    if (start && new Date(start).getTime() !== oldEvent.start.getTime()) {
-      changes.push({
-        field: "start",
-        oldValue: oldEvent.start.toISOString(),
-        newValue: start,
-      });
-    }
+    // Time comparison logic
+    const hasStartChanged =
+      body.start && new Date(body.start).getTime() !== doc.start.getTime();
+    const hasEndChanged =
+      body.end && new Date(body.end).getTime() !== doc.end.getTime();
 
-    if (end && new Date(end).getTime() !== oldEvent.end.getTime()) {
-      changes.push({
-        field: "end",
-        oldValue: oldEvent.end.toISOString(),
-        newValue: end,
-      });
-    }
+    if (hasStartChanged)
+      logChanges.push({ field: "start", old: doc.start, new: body.start });
+    if (hasEndChanged)
+      logChanges.push({ field: "end", old: doc.end, new: body.end });
 
-    if (changes.length === 0) {
-      const populatedEvent = await Event.findById(eventId).populate(
-        "profileIds",
-        "name timezone"
+    if (logChanges.length === 0) {
+      return res.json(
+        await Event.findById(eventId).populate("profileIds", "name timezone")
       );
-      return res.json(populatedEvent);
     }
 
-    const updateData = {};
-    if (profiles) updateData.profiles = profiles;
-    if (profileIds) updateData.profileIds = profileIds;
-    if (timezone) updateData.timezone = timezone;
-    if (start) updateData.start = new Date(start);
-    if (end) updateData.end = new Date(end);
+    // Prepare update object
+    const updatePayload = {
+      ...body,
+      start: body.start ? new Date(body.start) : doc.start,
+      end: body.end ? new Date(body.end) : doc.end,
+    };
 
-    if (
-      updateData.end &&
-      updateData.start &&
-      updateData.end <= updateData.start
-    ) {
-      return res.status(400).json({
-        error: "End date/time must be after start date/time",
-      });
+    if (updatePayload.end <= updatePayload.start) {
+      return res.status(400).json({ error: "Invalid date range" });
     }
 
-    const updatedEvent = await Event.findByIdAndUpdate(eventId, updateData, {
+    const updated = await Event.findByIdAndUpdate(eventId, updatePayload, {
       new: true,
       runValidators: true,
     }).populate("profileIds", "name timezone");
 
-    const eventLog = new EventLog({
-      eventId: updatedEvent._id,
+    // Save history
+    await EventLog.create({
+      eventId: updated._id,
       timestamp: new Date(),
-      changes,
+      changes: logChanges,
     });
 
-    await eventLog.save();
-
-    res.json(updatedEvent);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.json(updated);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// fetching updated logs for a user
 router.get("/:eventId/logs", async (req, res) => {
   try {
-    const { eventId } = req.params;
+    const exists = await Event.exists({ _id: req.params.eventId });
+    if (!exists) return res.status(404).json({ error: "No such event" });
 
-    const event = await Event.findById(eventId);
-    if (!event) {
-      return res.status(404).json({ error: "Event not found" });
-    }
-
-    const logs = await EventLog.find({ eventId })
+    const history = await EventLog.find({ eventId: req.params.eventId })
       .sort({ timestamp: -1 })
       .lean();
 
-    res.json(logs);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    res.json(history);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 

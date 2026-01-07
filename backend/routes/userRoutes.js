@@ -3,60 +3,53 @@ import User from "../models/User.js";
 
 const router = express.Router();
 
-// Get all users
 router.get("/", async (req, res) => {
   try {
-    const users = await User.find().sort({ createdAt: -1 });
-    res.json(users);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    const data = await User.find().sort({ createdAt: -1 });
+    res.json(data);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
-// Create a new user
 router.post("/", async (req, res) => {
   try {
     const { name, timezone } = req.body;
 
-    if (!name || !name.trim()) {
-      return res.status(400).json({ error: "Name is required" });
+    if (!name?.trim()) {
+      return res.status(400).json({ error: "User name is required" });
     }
 
-    const user = new User({
+    const newUser = new User({
       name: name.trim(),
       timezone: timezone || "Asia/Kolkata",
     });
 
-    const savedUser = await user.save();
-    res.status(201).json(savedUser);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+    await newUser.save();
+    res.status(201).json(newUser);
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create user" });
   }
 });
 
-// Update user timezone
 router.put("/:userId/timezone", async (req, res) => {
+  const { userId } = req.params;
+  const { timezone } = req.body;
+
+  if (!timezone) return res.status(400).json({ error: "Timezone is required" });
+
   try {
-    const { userId } = req.params;
-    const { timezone } = req.body;
-
-    if (!timezone) {
-      return res.status(400).json({ error: "Timezone is required" });
-    }
-
     const user = await User.findByIdAndUpdate(
       userId,
       { timezone },
-      { new: true, runValidators: true }
+      { new: true }
     );
 
-    if (!user) {
-      return res.status(404).json({ error: "User not found" });
-    }
+    if (!user) return res.status(404).json({ error: "User not found" });
 
     res.json(user);
-  } catch (error) {
-    res.status(500).json({ error: error.message });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
